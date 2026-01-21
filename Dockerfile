@@ -25,4 +25,4 @@ RUN python pipeline/training_pipeline.py
 
 ENV PORT=8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5050", "app:app"]
