@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: mlops-app
-        image: us-central1-docker.pkg.dev/mlops-new-447207/mlops-app/mlops-app:latest
+        image: us-central1-docker.pkg.dev/burnished-web-484613-t0/mlops-app/mlops-app:latest
         ports:
         - containerPort: 5000
 

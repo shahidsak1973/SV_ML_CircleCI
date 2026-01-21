@@ -1,55 +1,78 @@
 version: 2.1
 
 executors:
-  docker-executor:
+  gcp-executor:
     docker:
-      - image: google/cloud-sdk:latest
+      - image: cimg/base:stable
     working_directory: ~/repo
 
 jobs:
-  checkout_code:
-    executor: docker-executor
-    steps:
-      - checkout
-
   build_docker_image:
-    executor: docker-executor
+    executor: gcp-executor
     steps:
       - checkout
-      - setup_remote_docker
-      - run:
-          name: Authenticate with google cloud
-          command: |
-              echo "$GCLOUD_SERVICE_KEY" | base64 --decode > gcpkey.json
-              gcloud auth activate-service-account --key-file=gcpkey.json
-              gcloud auth configure-docker us-central1-docker.pkg.dev || gcloud auth configure-docker
+
+      - setup_remote_docker:
+          version: 20.10.18
 
       - run:
-          name: Build and Push Image
+          name: Install gcloud & kubectl
           command: |
-              docker build -t us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest .
-              docker push us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+            echo "deb https://packages.cloud.google.com/apt cloud-sdk main" | \
+              sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+            sudo apt-get update
+            sudo apt-get install -y google-cloud-cli kubectl
+
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo "$GCLOUD_SERVICE_KEY" | base64 -d > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - run:
+          name: Build and Push Docker Image
+          command: |
+            docker build -t us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest .
+            docker push us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest
 
   deploy_to_gke:
-    executor: docker-executor
+    executor: gcp-executor
     steps:
       - checkout
-      - setup_remote_docker
+
       - run:
-          name: Authenticate with google cloud
+          name: Install gcloud & kubectl
           command: |
-              echo "$GCLOUD_SERVICE_KEY" | base64 --decode > gcp-key.json
-              gcloud auth activate-service-account --key-file=gcp-key.json
-              gcloud auth configure-docker us-central1-docker.pkg.dev || gcloud auth configure-docker
-      
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+            echo "deb https://packages.cloud.google.com/apt cloud-sdk main" | \
+              sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+            sudo apt-get update
+            sudo apt-get install -y google-cloud-cli kubectl
+
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo "$GCLOUD_SERVICE_KEY" | base64 -d > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+
       - run:
           name: Configure GKE
           command: |
-              gcloud container clusters get-credentials $GKE_CLUSTER --region $GOOGLE_COMPUTE_REGION --project $GOOGLE_PROJECT_ID
+            gcloud container clusters get-credentials $GKE_CLUSTER \
+              --region $GOOGLE_COMPUTE_REGION \
+              --project $GOOGLE_PROJECT_ID
+
       - run:
           name: Deploy to GKE
           command: |
-              kubectl apply -f kubernetes-deployment.yaml
+            kubectl apply -f kubernetes-deployment.yaml
+            kubectl rollout status deployment/<DEPLOYMENT_NAME>
 
 workflows:
   version: 2
@@ -62,10 +85,3 @@ workflows:
       - deploy_to_gke:
           requires:
             - build_docker_image
-
-    
-
-
-
-
-
