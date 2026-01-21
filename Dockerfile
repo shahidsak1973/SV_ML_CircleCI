@@ -23,6 +23,6 @@ RUN pip install --no-cache-dir -e .
 # Train the model before running the application
 RUN python pipeline/training_pipeline.py
 
-ENV PORT=8080
+ENV PORT=5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5050", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
