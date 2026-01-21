@@ -1,0 +1,9 @@
+mlproject/
+mlruns/
+logs/
+MLOPS_PROJECT_1.egg-info/
+gcpkey.json
+__pycache__/
+*.pyc
+test.py
+test1.py
