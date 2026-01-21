@@ -1,31 +1,84 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine.
-# See: https://circleci.com/docs/reference/configuration-reference
 version: 2.1
 
-# Define a job to be invoked later in a workflow.
-# See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#jobs-overview & https://circleci.com/docs/reference/configuration-reference/#jobs
-jobs:
-  say-hello:
-    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
-    # See: https://circleci.com/docs/guides/execution-managed/executor-intro/ & https://circleci.com/docs/reference/configuration-reference/#executor-job
+executors:
+  gcp-executor:
     docker:
-      # Specify the version you desire here
-      # See: https://circleci.com/developer/images/image/cimg/base
-      - image: cimg/base:current
+      - image: cimg/base:stable
+    working_directory: ~/repo
 
-    # Add steps to the job
-    # See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#steps-overview & https://circleci.com/docs/reference/configuration-reference/#steps
+jobs:
+  build_docker_image:
+    executor: gcp-executor
     steps:
-      # Checkout the code as the first step.
       - checkout
-      - run:
-          name: "Say hello"
-          command: "echo Hello, World!"
 
-# Orchestrate jobs using workflows
-# See: https://circleci.com/docs/guides/orchestrate/workflows/ & https://circleci.com/docs/reference/configuration-reference/#workflows
+      - setup_remote_docker:
+          version: 20.10.18
+
+      - run:
+          name: Install gcloud & kubectl
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+            echo "deb https://packages.cloud.google.com/apt cloud-sdk main" | \
+              sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+            sudo apt-get update
+            sudo apt-get install -y google-cloud-cli kubectl
+
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo "$GCLOUD_SERVICE_KEY" | base64 -d > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - run:
+          name: Build and Push Docker Image
+          command: |
+            docker build -t us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest .
+            docker push us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest
+
+  deploy_to_gke:
+    executor: gcp-executor
+    steps:
+      - checkout
+
+      - run:
+          name: Install gcloud & kubectl
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+            echo "deb https://packages.cloud.google.com/apt cloud-sdk main" | \
+              sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+            sudo apt-get update
+            sudo apt-get install -y google-cloud-cli kubectl
+
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo "$GCLOUD_SERVICE_KEY" | base64 -d > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+
+      - run:
+          name: Configure GKE
+          command: |
+            gcloud container clusters get-credentials $GKE_CLUSTER \
+              --region $GOOGLE_COMPUTE_REGION \
+              --project $GOOGLE_PROJECT_ID
+
+      - run:
+          name: Deploy to GKE
+          command: |
+            kubectl apply -f kubernetes-deployment.yaml
+            kubectl rollout status deployment/<DEPLOYMENT_NAME>
+
 workflows:
-  say-hello-workflow: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  version: 2
+  deploy_pipeline:
     jobs:
-      - say-hello
+      - build_docker_image
+      - deploy_to_gke:
+          requires:
+            - build_docker_image
