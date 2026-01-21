@@ -36,6 +36,7 @@ jobs:
       - run:
           name: Build and Push Image
           command: |
+            echo $GOOGLE_PROJECT_ID
             docker build -t us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest .
             docker push us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/mlops-app/mlops-app:latest
 
